@@ -1,4 +1,5 @@
 /*
+ * AutoHotkey wrapper of tomlc99
  * Copyright (c) 2023 Xuesong Peng <pengxuesong.cn@gmail.com>
  *
  * This program is free software: you can redistribute it and/or modify
@@ -50,6 +51,7 @@ class TomlStruct extends Class {
         }
     }
 
+    ; shallow copy
     copy(src) {
         tgt := this.struct_ptr()
         length := %Type(this)%.struct_size()
@@ -105,28 +107,36 @@ class TomlStruct extends Class {
     }
 } ; TomlStruct
 
-global toml := DllCall("LoadLibrary", "Str", "toml.dll", "Ptr")
-if not toml
+global toml_dll := DllCall("LoadLibrary", "Str", "toml.dll", "Ptr")
+if not toml_dll
     throw Error("加载 Toml 动态库失败！")
 
-global crt := DllCall("LoadLibrary", "Str", "ucrtbase.dll", "Ptr")
+global ucrt_dll := DllCall("LoadLibrary", "Str", "ucrtbase.dll", "Ptr")
 free(block) {
-    if not crt
+    if not ucrt_dll
         return
     DllCall("ucrtbase\free", "Ptr", block, "CDecl")
 }
 
-/* Parse a file. Return a table on success, or 0 otherwise.
+/**
+ * Parse a file. Return a table on success, or 0 otherwise.
  * Caller must toml_free(the-return-value) after use.
+ * @param file_object AutoHotkey File object of toml format
+ * @param err String by ref will contain the error message if any
+ * @returns {Ptr} A pointer to `toml_table_t`
  */
 toml_parse_file(file_object, &err := "") {
     content := file_object.Read()
     return toml_parse(content, &err)
 }
 
-/* Parse a string containing the full config.
+/**
+ * Parse a string containing the full config.
  * Return a table on success, or 0 otherwise.
  * Caller must toml_free(the-return-value) after use.
+ * @param conf String conaining toml content
+ * @param err String by ref will contain the error message if any
+ * @returns {Ptr} A pointer to `toml_table_t`
  */
 toml_parse(conf, &err := "") {
     errbuf := Buffer(Toml_BufSize, 0)
@@ -135,15 +145,18 @@ toml_parse(conf, &err := "") {
     return tab
 }
 
-/* Free the table returned by toml_parse() or toml_parse_file(). Once
+/**
+ * Free the table returned by toml_parse() or toml_parse_file(). Once
  * this function is called, any handles accessed through this tab
  * directly or indirectly are no longer valid.
+ * @param tab A pointer to `toml_table_t`
  */
 toml_free(tab) {
     DllCall("toml\toml_free", "Ptr", tab, "CDecl Ptr")
 }
 
-/* Timestamp types. The year, month, day, hour, minute, second, z
+/**
+ * Timestamp types. The year, month, day, hour, minute, second, z
  * fields may be NULL if they are not relevant. e.g. In a DATE
  * type, the hour, minute, second and z fields will be NULLs.
  */
@@ -252,61 +265,92 @@ class TomlDatum extends TomlStruct {
         get => this.num_get(TomlDatum.ok_offset())
     }
 
-    ; address of the union
+    ; address of the union. free this field instead of ts / s
     u {
         get => this.ptr_get(TomlDatum.u_offset())
     }
-    /* ts must be freed after use */
+    ; u must be freed after use ts
     ts {
         get => this.u ? TomlTimestamp(this.u) : 0
     }
-    /* string value. s must be freed after use */
+    ; string value. u must be freed after use s
     s {
         get => this.c_str_get(, TomlDatum.u_offset())
     }
-    /* bool value */
+    ; bool value
     b {
         get => this.num_get(TomlDatum.u_offset())
     }
-    /* int value */
+    ; int value
     i {
         get => this.num_get(TomlDatum.u_offset(), "Int64")
     }
-    /* double value */
+    ; double value
     d {
         get => this.num_get(TomlDatum.u_offset(), "Double")
     }
 } ; TomlDatum
 
 /* on arrays: */
-/* ... retrieve size of array. */
+/**
+ * retrieve size of array.
+ * @param arr pointer to `toml_array_t`
+ * @returns {number} the size of the array
+ */
 toml_array_nelem(arr) {
     return DllCall("toml\toml_array_nelem", "Ptr", arr, "CDecl Int")
 }
 
 /* ... retrieve values using index. */
+; do not directly use
 toml_val_at(type, arr, idx) {
     datum := TomlDatum()
     DllCall("toml\toml_" . type . "_at", "Ptr", datum.struct_ptr(), "Ptr", arr, "Int", idx, "CDecl")
     return datum
 }
+/**
+ * @param arr pointer to `toml_array_t`
+ * @param idx index in the array, starting from 0
+ * @returns {TomlDatum} the datum of String at the index in the array
+ */
 toml_string_at(arr, idx) {
     return toml_val_at("string", arr, idx)
 }
+/**
+ * @param arr pointer to `toml_array_t`
+ * @param idx index in the array, starting from 0
+ * @returns {TomlDatum} the datum of Bool at the index in the array
+ */
 toml_bool_at(arr, idx) {
     return toml_val_at("bool", arr, idx)
 }
+/**
+ * @param arr pointer to `toml_array_t`
+ * @param idx index in the array, starting from 0
+ * @returns {TomlDatum} the datum of Integer at the index in the array
+ */
 toml_int_at(arr, idx) {
     return toml_val_at("int", arr, idx)
 }
+/**
+ * @param arr pointer to `toml_array_t`
+ * @param idx index in the array, starting from 0
+ * @returns {TomlDatum} the datum of Double at the index in the array
+ */
 toml_double_at(arr, idx) {
     return toml_val_at("double", arr, idx)
 }
+/**
+ * @param arr pointer to `toml_array_t`
+ * @param idx index in the array, starting from 0
+ * @returns {TomlDatum} the datum of timestamp at the index in the array
+ */
 toml_timestamp_at(arr, idx) {
     return toml_val_at("timestamp", arr, idx)
 }
 
 /* ... retrieve array or table using index. */
+; do not directly use
 toml_ptr_at(type, arr, idx) {
     return DllCall("toml\toml_" . type . "_at", "Ptr", arr, "Int", idx, "CDecl Ptr")
 }
@@ -318,52 +362,89 @@ toml_table_at(arr, idx) {
 }
 
 /* on tables: */
-/* ... retrieve the key in table at keyidx. Return 0 if out of range. */
+/**
+ * Retrieve the key in table at keyidx.
+ * - Recommend to use `toml_test_key_in` instead
+ * @param tab pointer to `toml_table_t`
+ * @param keyidx index of key, starting from 0
+ * @returns {String} the retrived key (may be empty), or empty string if out of range
+ */
 toml_key_in(tab, keyidx) {
     p := DllCall("toml\toml_key_in", "Ptr", tab, "Int", keyidx, "CDecl Ptr")
     return p ? StrGet(p, "UTF-8") : ""
 }
 /**
- * Test and get the key string in the table
- * 
- * @param tab pointer to table
- * @param keyidx index
+ * Test and retrieve the key in table at keyindex. Return 0 if out of range
+ * @param tab pointer to `toml_table_t`
+ * @param keyidx index of key, starting from 0
  * @param str store the key string if exists
- * @returns `True` on success, `False` on failure
+ * @returns {Ptr} the pointer to key's C string, or 0 if out of range
  */
 toml_test_key_in(tab, keyidx, &str := "") {
     if p := DllCall("toml\toml_key_in", "Ptr", tab, "Int", keyidx, "CDecl Ptr")
         str := StrGet(p, "UTF-8")
     return p
 }
-/* ... returns 1 if key exists in tab, 0 otherwise */
+/**
+ * Test if key exists in table
+ * @param tab pointer to `toml_table_t`
+ * @param key String of key
+ * @returns {number} 1 if key exists in tab, 0 otherwise
+ */
 toml_key_exists(tab, key) {
     return DllCall("toml\toml_key_exists", "Ptr", tab, "Ptr", TomlStruct.c_str(key).Ptr, "CDecl Int")
 }
 
 /* ... retrieve values using key. */
+; do not directly use
 toml_val_in(type, tab, key) {
     datum := TomlDatum()
     DllCall("toml\toml_" . type . "_in", "Ptr", datum.struct_ptr(), "Ptr", tab, "Ptr", TomlStruct.c_str(key).Ptr, "CDecl")
     return datum
 }
+/**
+ * @param tab pointer to `toml_table_t`
+ * @param key String of key
+ * @returns {TomlDatum} the String datum of key in the table
+ */
 toml_string_in(tab, key) {
     return toml_val_in("string", tab, key)
 }
+/**
+ * @param tab pointer to `toml_table_t`
+ * @param key String of key
+ * @returns {TomlDatum} the Bool datum of key in the table
+ */
 toml_bool_in(tab, key) {
     return toml_val_in("bool", tab, key)
 }
+/**
+ * @param tab pointer to `toml_table_t`
+ * @param key String of key
+ * @returns {TomlDatum} the Integer datum of key in the table
+ */
 toml_int_in(tab, key) {
     return toml_val_in("int", tab, key)
 }
+/**
+ * @param tab pointer to `toml_table_t`
+ * @param key String of key
+ * @returns {TomlDatum} the Double datum of key in the table
+ */
 toml_double_in(tab, key) {
     return toml_val_in("double", tab, key)
 }
+/**
+ * @param tab pointer to `toml_table_t`
+ * @param key String of key
+ * @returns {TomlDatum} the timestamp datum of key in the table
+ */
 toml_timestamp_in(tab, key) {
     return toml_val_in("timestamp", tab, key)
 }
 
 /* .. retrieve array or table using key. */
+; do not directly use
 toml_ptr_in(type, tab, key) {
     return DllCall("toml\toml_" . type . "_in", "Ptr", tab, "Ptr", TomlStruct.c_str(key).Ptr, "CDecl Ptr")
 }
