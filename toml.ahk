@@ -105,37 +105,16 @@ class TomlStruct extends Class {
     }
 } ; TomlStruct
 
-global toml := DllCall("LoadLibrary", "Str", "libtoml.dll", "Ptr")
+global toml := DllCall("LoadLibrary", "Str", "toml.dll", "Ptr")
 if not toml
     throw Error("加载 Toml 动态库失败！")
 
 global crt := DllCall("LoadLibrary", "Str", "ucrtbase.dll", "Ptr")
-; fopen(file_name, mode) {
-;     if not crt
-;         return 0
-;     return DllCall("ucrtbase\fopen", "AStr", file_name, "AStr", mode, "CDecl Ptr")
-; }
-; fclose(stream) {
-;     if not crt
-;         return 0
-;     return DllCall("ucrtbase\fclose", "Ptr", stream, "CDecl Int")
-; }
 free(block) {
     if not crt
         return
     DllCall("ucrtbase\free", "Ptr", block, "CDecl")
 }
-
-/* Parse a file. Return a table on success, or 0 otherwise.
- * Caller must toml_free(the-return-value) after use.
- */
-; TODO: parsing from FILE* cause silently crash
-; toml_parse_file_ptr(fp, &err := "") {
-;     errbuf := Buffer(Toml_BufSize, 0)
-;     if not tab := DllCall("libtoml\toml_parse_file", "Ptr", fp, "Ptr", errbuf.Ptr, "Int", Toml_BufSize, "CDecl Ptr")
-;         err := StrGet(errbuf.Ptr, "UTF-8")
-;     return tab
-; }
 
 /* Parse a file. Return a table on success, or 0 otherwise.
  * Caller must toml_free(the-return-value) after use.
@@ -151,7 +130,7 @@ toml_parse_file(file_object, &err := "") {
  */
 toml_parse(conf, &err := "") {
     errbuf := Buffer(Toml_BufSize, 0)
-    if not tab := DllCall("libtoml\toml_parse", "Ptr", TomlStruct.c_str(conf).Ptr, "Ptr", errbuf.Ptr, "Int", Toml_BufSize, "CDecl Ptr")
+    if not tab := DllCall("toml\toml_parse", "Ptr", TomlStruct.c_str(conf).Ptr, "Ptr", errbuf.Ptr, "Int", Toml_BufSize, "CDecl Ptr")
         err := StrGet(errbuf.Ptr, "UTF-8")
     return tab
 }
@@ -161,7 +140,7 @@ toml_parse(conf, &err := "") {
  * directly or indirectly are no longer valid.
  */
 toml_free(tab) {
-    DllCall("libtoml\toml_free", "Ptr", tab, "CDecl Ptr")
+    DllCall("toml\toml_free", "Ptr", tab, "CDecl Ptr")
 }
 
 /* Timestamp types. The year, month, day, hour, minute, second, z
@@ -302,13 +281,13 @@ class TomlDatum extends TomlStruct {
 /* on arrays: */
 /* ... retrieve size of array. */
 toml_array_nelem(arr) {
-    return DllCall("libtoml\toml_array_nelem", "Ptr", arr, "CDecl Int")
+    return DllCall("toml\toml_array_nelem", "Ptr", arr, "CDecl Int")
 }
 
 /* ... retrieve values using index. */
 toml_val_at(type, arr, idx) {
     datum := TomlDatum()
-    DllCall("libtoml\toml_" . type . "_at", "Ptr", datum.struct_ptr(), "Ptr", arr, "Int", idx, "CDecl")
+    DllCall("toml\toml_" . type . "_at", "Ptr", datum.struct_ptr(), "Ptr", arr, "Int", idx, "CDecl")
     return datum
 }
 toml_string_at(arr, idx) {
@@ -329,7 +308,7 @@ toml_timestamp_at(arr, idx) {
 
 /* ... retrieve array or table using index. */
 toml_ptr_at(type, arr, idx) {
-    return DllCall("libtoml\toml_" . type . "_at", "Ptr", arr, "Int", idx, "CDecl Ptr")
+    return DllCall("toml\toml_" . type . "_at", "Ptr", arr, "Int", idx, "CDecl Ptr")
 }
 toml_array_at(arr, idx) {
     return toml_ptr_at("array", arr, idx)
@@ -341,7 +320,7 @@ toml_table_at(arr, idx) {
 /* on tables: */
 /* ... retrieve the key in table at keyidx. Return 0 if out of range. */
 toml_key_in(tab, keyidx) {
-    p := DllCall("libtoml\toml_key_in", "Ptr", tab, "Int", keyidx, "CDecl Ptr")
+    p := DllCall("toml\toml_key_in", "Ptr", tab, "Int", keyidx, "CDecl Ptr")
     return p ? StrGet(p, "UTF-8") : ""
 }
 /**
@@ -353,19 +332,19 @@ toml_key_in(tab, keyidx) {
  * @returns `True` on success, `False` on failure
  */
 toml_test_key_in(tab, keyidx, &str := "") {
-    if p := DllCall("libtoml\toml_key_in", "Ptr", tab, "Int", keyidx, "CDecl Ptr")
+    if p := DllCall("toml\toml_key_in", "Ptr", tab, "Int", keyidx, "CDecl Ptr")
         str := StrGet(p, "UTF-8")
     return p
 }
 /* ... returns 1 if key exists in tab, 0 otherwise */
 toml_key_exists(tab, key) {
-    return DllCall("libtoml\toml_key_exists", "Ptr", tab, "Ptr", TomlStruct.c_str(key).Ptr, "CDecl Int")
+    return DllCall("toml\toml_key_exists", "Ptr", tab, "Ptr", TomlStruct.c_str(key).Ptr, "CDecl Int")
 }
 
 /* ... retrieve values using key. */
 toml_val_in(type, tab, key) {
     datum := TomlDatum()
-    DllCall("libtoml\toml_" . type . "_in", "Ptr", datum.struct_ptr(), "Ptr", tab, "Ptr", TomlStruct.c_str(key).Ptr, "CDecl")
+    DllCall("toml\toml_" . type . "_in", "Ptr", datum.struct_ptr(), "Ptr", tab, "Ptr", TomlStruct.c_str(key).Ptr, "CDecl")
     return datum
 }
 toml_string_in(tab, key) {
@@ -386,7 +365,7 @@ toml_timestamp_in(tab, key) {
 
 /* .. retrieve array or table using key. */
 toml_ptr_in(type, tab, key) {
-    return DllCall("libtoml\toml_" . type . "_in", "Ptr", tab, "Ptr", TomlStruct.c_str(key).Ptr, "CDecl Ptr")
+    return DllCall("toml\toml_" . type . "_in", "Ptr", tab, "Ptr", TomlStruct.c_str(key).Ptr, "CDecl Ptr")
 }
 toml_array_in(tab, key) {
     return toml_ptr_in("array", tab, key)
@@ -401,7 +380,7 @@ toml_table_in(tab, key) {
 
 /* Return the array kind: 't'able, 'a'rray, 'v'alue, 'm'ixed */
 toml_array_kind(arr) {
-    return Chr(DllCall("libtoml\toml_array_kind", "Ptr", arr, "CDecl Char"))
+    return Chr(DllCall("toml\toml_array_kind", "Ptr", arr, "CDecl Char"))
 }
 
 /* For array kind 'v'alue, return the type of values
@@ -409,98 +388,38 @@ toml_array_kind(arr) {
    0 if unknown
 */
 toml_array_type(arr) {
-    return (c := DllCall("libtoml\toml_array_type", "Ptr", arr, "CDecl Char")) ? Chr(c) : 0
+    return (c := DllCall("toml\toml_array_type", "Ptr", arr, "CDecl Char")) ? Chr(c) : 0
 }
 
 /* Return the key of an array */
 toml_array_key(arr) {
-    return (p := DllCall("libtoml\toml_array_key", "Ptr", arr, "CDecl Ptr")) ? StrGet(p, "UTF-8") : ""
+    return (p := DllCall("toml\toml_array_key", "Ptr", arr, "CDecl Ptr")) ? StrGet(p, "UTF-8") : ""
 }
 
 /* Return the number of key-values in a table */
 toml_table_nkval(tab) {
-    return DllCall("libtoml\toml_table_nkval", "Ptr", tab, "CDecl Int")
+    return DllCall("toml\toml_table_nkval", "Ptr", tab, "CDecl Int")
 }
 
 /* Return the number of arrays in a table */
 toml_table_narr(tab) {
-    return DllCall("libtoml\toml_table_narr", "Ptr", tab, "CDecl Int")
+    return DllCall("toml\toml_table_narr", "Ptr", tab, "CDecl Int")
 }
 
 /* Return the number of sub-tables in a table */
 toml_table_ntab(tab) {
-    return DllCall("libtoml\toml_table_ntab", "Ptr", tab, "CDecl Int")
+    return DllCall("toml\toml_table_ntab", "Ptr", tab, "CDecl Int")
 }
 
 /* Return the key of a table*/
 toml_table_key(tab) {
-    return (p := DllCall("libtoml\toml_table_key", "Ptr", tab, "CDecl Ptr")) ? StrGet(p, "UTF-8") : ""
+    return (p := DllCall("toml\toml_table_key", "Ptr", tab, "CDecl Ptr")) ? StrGet(p, "UTF-8") : ""
 }
 
 /*--------------------------------------------------------------
  * misc
  */
-/**
- * Convert a char in utf8 into UCS, and store it in *ret.
- * Return #bytes consumed or -1 on failure.
- */
-toml_utf8_to_ucs(orig, len, &ret) {
-    r := Buffer(A_Int64Size, 0)
-    bytes := DllCall("libtoml\toml_utf8_to_ucs", "Ptr", orig, "Int", len, "Ptr", r.Ptr, "CDecl Int")
-    ret := NumGet(r.Ptr, "Int64")
-    return bytes
-}
-
-/**
- *	Convert a UCS char to utf8 code, and return it in buf.
- *	Return #bytes used in buf to encode the char, or
- *	-1 on error.
- */
-toml_ucs_to_utf8(code, &buf) {
-    buf := Buffer(6, 0)
-    return DllCall("libtoml\toml_ucs_to_utf8", "Int64", code, "Ptr", buf.Ptr, "CDecl Int")
-}
-
+/* Set customized `malloc` and `free` function */
 toml_set_memutil(xxmalloc, xxfree) {
-    DllCall("libtoml\toml_set_memutil", "Ptr", xxmalloc, "Ptr", xxfree, "CDecl")
-}
-
-/*--------------------------------------------------------------
- *  deprecated
- */
-
-toml_raw_in(tab, key) {
-    return DllCall("libtoml\toml_raw_in", "Ptr", tab, "Ptr", TomlStruct.c_str(key).Ptr, "CDecl Ptr")
-}
-toml_raw_at(arr, idx) {
-    return DllCall("libtoml\toml_raw_at", "Ptr", arr, "Int", idx, "CDecl Ptr")
-}
-toml_rtos(s, &ret) {
-    p := Buffer(A_PtrSize, 0)
-    if res := DllCall("libtoml\toml_rtos", "Ptr", s, "Ptr", p.Ptr, "CDecl Int")
-        ret := (cp := NumGet(p.Ptr, "Ptr")) ? StrGet(cp, "UTF-8") : ""
-    return res
-}
-toml_rtob(s, &ret) {
-    p := Buffer(A_IntSize, 0)
-    if res := DllCall("libtoml\toml_rtob", "Ptr", s, "Ptr", p.Ptr, "CDecl Int")
-        ret := NumGet(p.Ptr, "Int")
-    return res
-}
-toml_rtoi(s, &ret) {
-    p := Buffer(A_Int64Size, 0)
-    if res := DllCall("libtoml\toml_rtoi", "Ptr", s, "Ptr", p.Ptr, "CDecl Int")
-        ret := NumGet(p.Ptr, "Int64")
-    return res
-}
-toml_rtod(s, &ret) {
-    p := Buffer(A_DoubleSize, 0)
-    if res := DllCall("libtoml\toml_rtod", "Ptr", s, "Ptr", p.Ptr, "CDecl Int")
-        ret := NumGet(p.Ptr, "Double")
-    return res
-}
-; toml_rtod_ex(s, &ret, buf, buflen)
-toml_rtots(s, &ret) {
-    ret := TomlTimestamp()
-    return DllCall("libtoml\toml_rtots", "Ptr", s, "Ptr", ret.struct_ptr(), "CDecl Int")
+    DllCall("toml\toml_set_memutil", "Ptr", xxmalloc, "Ptr", xxfree, "CDecl")
 }

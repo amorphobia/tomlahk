@@ -1,0 +1,7 @@
+add_rules("mode.debug", "mode.release")
+
+target("toml")
+    set_kind("shared")
+    add_files("toml.c")
+    add_files("toml.export.txt")
+    add_rules("utils.symbols.export_list")
